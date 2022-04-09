@@ -1,65 +1,61 @@
 let db;
+const request = indexedDB.open("budget", 1);
 
-const request = indexedDB.open('budget_hunt', 1);
-
-request.onupgradeneeded = function(event){
+request.onupgradeneeded = function (event) {
   const db = event.target.result;
-  db.createObjectStore('new_transactions', { autoIncrement: true});
-}
+  db.createObjectStore("pending", { autoIncrement: true });
+};
 
-request.onsuccess = function(event){
+request.onsuccess = function (event) {
   db = event.target.result;
 
-  if(navigator.onLine){
-    updateTransactions()
-    console.log("You made it online");
+  // check if app is online before reading from db
+  if (navigator.onLine) {
+    checkDatabase();
   }
-}
+};
 
-request.onerror = function(event){
-  console.log(event.target.errorCode);
-}
+request.onerror = function (event) {
+  console.log("Woops! " + event.target.errorCode);
+};
 
 function saveRecord(record) {
-  const transaction = db.transaction(['new_transactions'], 'readwrite');
+  const transaction = db.transaction(["pending"], "readwrite");
+  const store = transaction.objectStore("pending");
 
-  const budgetObjectStore = transaction.objectStore('new_transactions');
-
-  budgetObjectStore.add(record);
+  store.add(record);
 }
 
-function updateTransactions(){
-  const transaction = db.transaction(['new_transactions'], 'readwrite');
+function checkDatabase() {
+  const transaction = db.transaction(["pending"], "readwrite");
+  const store = transaction.objectStore("pending");
+  const getAll = store.getAll();
 
-  const budgetObjectStore = transaction.objectStore('new_transactions');
-  const getAll = budgetObjectStore.getAll();
-
-  getAll.onsuccess = function(){
-    if(getAll.result.length > 0){
-      fetch('/api/transaction', {
-        method: 'POST',
+  getAll.onsuccess = function () {
+    if (getAll.result.length > 0) {
+      fetch("/api/transaction/bulk", {
+        method: "POST",
         body: JSON.stringify(getAll.result),
         headers: {
-          Accept: 'application/json, text/plain, */*',
-          'Content-Type': 'application/json'
+          Accept: "application/json, text/plain, */*",
+          "Content-Type": "application/json"
         }
       })
-      .then(response => response.json())
-      .then(serverResponse => {
-        if(serverResponse.message){
-          throw new Error(serverResponse);
-        }
-        const transaction = db.transaction(['new_transactions'], 'readwrite');
-        const budgetObjectStore = transaction.objectStore('new_transactions');
-        budgetObjectStore.clear();
-
-        alert('All transactions have been added');
-      })
-      .catch(err => {
-        console.log(err);
-      })
+        .then(response => response.json())
+        .then(() => {
+          // delete records if successful
+          const transaction = db.transaction(["pending"], "readwrite");
+          const store = transaction.objectStore("pending");
+          store.clear();
+        });
     }
-  }
+  };
+}
+function deletePending() {
+  const transaction = db.transaction(["pending"], "readwrite");
+  const store = transaction.objectStore("pending");
+  store.clear();
 }
 
-window.addEventListener('online', updateTransactions);
+// listen for app coming back online
+window.addEventListener("online", checkDatabase);
